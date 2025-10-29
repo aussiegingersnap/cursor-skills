@@ -1,0 +1,9 @@
+{
+    "mcpServers": {
+      "cursor-skills": {
+        "command": "uv",
+        "type": "stdio",
+        "args": ["run", "path/to/cursor-skills/mcp/skills_mcp.py"]
+      }
+    }
+  }

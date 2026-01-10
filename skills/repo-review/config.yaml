@@ -1,0 +1,105 @@
+# Repo Review Skill Configuration
+# This file stores persistent settings, saved orgs, and repo groups.
+# Modify directly or use natural language commands during skill invocation.
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEFAULT SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+defaults:
+  # Default date range for analysis (ISO format)
+  since: "2025-01-01"
+  
+  # Which analysis modes to run by default
+  # Options: contributions, quality, team
+  analysis_modes:
+    - contributions
+    - quality
+    - team
+  
+  # Output format preference
+  # Options: markdown, ascii, json
+  output_format: ascii
+  
+  # Your role (affects focus and language of output)
+  # Options: engineering_manager, tech_lead, ic
+  role: engineering_manager
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ORGANIZATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+# Track GitHub organizations and their contributors
+
+orgs:
+  # Example organization - modify for your use
+  # example-org:
+  #   github_org: "ExampleOrg"           # GitHub organization name
+  #   description: "Example company repos"
+  #   active: true                        # Set false to skip in reviews
+  #   contributors:
+  #     - name: "Full Name"
+  #       aliases: ["username", "alt-name"]  # Git author variations
+  #       role: "Senior Engineer"
+  #       active: true                    # Set false when they leave
+  #     - name: "Another Person"
+  #       aliases: ["another"]
+  #       role: "Junior Engineer"
+  #       active: true
+  #   exclude_authors:                    # Bots and automated commits
+  #     - "dependabot[bot]"
+  #     - "github-actions[bot]"
+
+  up:
+    github_org: "WTD-UP"
+    description: "UP - Good for you Videos"
+    active: true
+    contributors:
+      # Add your team members here
+      # - name: "Team Member Name"
+      #   aliases: ["github-username", "alternate-git-name"]
+      #   role: "Junior Engineer"
+      #   active: true
+    exclude_authors:
+      - "dependabot[bot]"
+      - "github-actions[bot]"
+      - "renovate[bot]"
+      - "gpt-engineer-app[bot]"
+      - "cursor agent"
+      - "copilot"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REPO GROUPS
+# ═══════════════════════════════════════════════════════════════════════════════
+# Custom collections of repos (not tied to a GitHub org)
+
+groups:
+  # Example groups - modify for your use
+  
+  # personal:
+  #   description: "My personal projects"
+  #   active: true
+  #   repos:
+  #     - "https://github.com/username/project-a"
+  #     - "https://github.com/username/project-b"
+  
+  # client-work:
+  #   description: "Freelance client projects"
+  #   active: true
+  #   repos:
+  #     - "https://github.com/client/app"
+  
+  # archived:
+  #   description: "Old projects for reference only"
+  #   active: false  # Won't appear in default reviews
+  #   repos:
+  #     - "https://github.com/username/old-project"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SESSION TRACKING
+# ═══════════════════════════════════════════════════════════════════════════════
+# Automatically updated - tracks last review for continuity
+
+last_session:
+  target: null           # Last reviewed target (org name, group name, or repo URL)
+  target_type: null      # org | group | repo
+  date: null             # ISO date of last review

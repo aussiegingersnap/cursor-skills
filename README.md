@@ -246,5 +246,9 @@ If you want to make skills available in all of the repos you work on with Cursor
 
 ## License
 
-See individual skill directories for their respective licenses.
+This repository is licensed under the [MIT License](LICENSE).
+
+**Third-party skills** imported from external sources (like Anthropic's skills repository) retain their original licenses. See individual skill directories for specific LICENSE files.
+
+Skills created in this repository (design-system, youtube, repo-review) are MIT licensed.
 

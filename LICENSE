@@ -22,5 +22,26 @@ SOFTWARE.
 
 ---
 
-ATTRIBUTION REQUIRED: When using or distributing this skill, you must include
-this license file and maintain the copyright notice above.
+## Skills Licensing
+
+### Jason Toevs Skills (Attribution Required)
+
+The following skills are created by Jason Toevs and require attribution:
+
+- **design-system** — Complete design system with principles + style guide template
+- **youtube** — YouTube video/playlist downloading and transcription
+- **repo-review** — Repository review and analysis
+
+When using or distributing these skills, you must include the LICENSE.txt file 
+from the skill directory and maintain the copyright notice.
+
+### Third-Party Skills
+
+Skills imported from external sources retain their original licenses:
+
+- **artifacts-builder**, **skill-creator**, **document-skills**: 
+  From [Anthropic's Skills Repository](https://github.com/anthropics/skills)
+  Licensed under MIT by Anthropic, PBC.
+
+When importing skills from external sources using `import_skill`, those skills 
+retain their original licensing terms.

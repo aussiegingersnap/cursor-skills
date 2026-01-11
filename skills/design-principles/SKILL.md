@@ -1,6 +1,6 @@
 ---
 name: design-principles
-description: Enforce a precise, minimal design system inspired by Linear, Notion, and Stripe. Use this skill when building dashboards, admin interfaces, or any UI that needs Jony Ive-level precision - clean, modern, minimalist with taste. Every pixel matters.
+description: Enforce a precise, minimal design system inspired by Linear, Notion, and Stripe. Use this skill when building dashboards, admin interfaces, or any UI that needs Jony Ive-level precision - clean, modern, minimalist with taste. Every pixel matters. Pair with style-guide skill for component documentation.
 ---
 
 # Design Principles
@@ -235,3 +235,15 @@ Every interface should look designed by a team that obsesses over 1-pixel differ
 Different products want different things. A developer tool wants precision and density. A collaborative product wants warmth and space. A financial product wants trust and sophistication. Let the product context guide the aesthetic.
 
 The goal: intricate minimalism with appropriate personality. Same quality bar, context-driven execution.
+
+---
+
+## Related: Style Guide Skill
+
+Use the **style-guide** skill alongside this one to maintain a living component library at `/style-guide`. Every UI component you build should have:
+
+1. An entry in the style guide showing all variants and states
+2. Proper documentation with usage examples
+3. Consistent token usage (colors, spacing, radius from theme)
+
+The style guide ensures component decisions are visible, documented, and maintainable.

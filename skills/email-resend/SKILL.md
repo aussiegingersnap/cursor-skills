@@ -1,6 +1,6 @@
 ---
 name: email-resend
-description: Email delivery using Resend. Use this skill when implementing transactional emails (verification, password reset, notifications), configuring email infrastructure, or following email best practices for deliverability and spam prevention.
+description: Email delivery using Resend API. Use this skill when implementing email verification flows, password reset, transactional emails, configuring DNS (SPF/DKIM/DMARC), setting up the Resend MCP server, or following email best practices for deliverability. Includes Next.js 16 proxy patterns, OAuth vs password user handling, and token security patterns.
 ---
 
 # Email Resend Skill
@@ -300,6 +300,90 @@ const EMAIL_RATE_LIMITS = {
 | Free | 100 | 3,000 | 2/second |
 | Pro | 5,000+ | Based on plan | 10/second |
 
+## OAuth vs Password Users
+
+When implementing email verification, handle OAuth and password users differently:
+
+```typescript
+// OAuth users (Google, Apple, etc.) - pre-verified
+const user = createUser({
+  // ...
+  email_verified_at: new Date().toISOString(), // Trust OAuth provider
+})
+
+// Password users - require verification
+const user = createUser({
+  // ...
+  email_verified_at: null, // Must verify via email
+})
+```
+
+### Verification Flow by Auth Type
+
+| Auth Type | Email Verified? | Verification Required? |
+|-----------|----------------|----------------------|
+| Google OAuth | Yes (by Google) | No |
+| Apple OAuth | Yes (by Apple) | No |
+| Email/Password | No | Yes - block until verified |
+| Magic Link | Yes (implicit) | No |
+
+### Handling Unverified Login Attempts
+
+```typescript
+// In login API
+if (!user.email_verified_at) {
+  return NextResponse.json({
+    error: 'Please verify your email before signing in.',
+    code: 'EMAIL_NOT_VERIFIED',
+    requiresVerification: true,
+  }, { status: 403 })
+}
+```
+
+### Re-signup for Unverified Users
+
+If a user tries to sign up with an email that exists but isn't verified, resend the verification:
+
+```typescript
+const existingUser = getUserByEmail(email)
+if (existingUser && !existingUser.email_verified_at) {
+  // Resend verification instead of returning error
+  const { token } = await createVerificationToken(existingUser.id)
+  await sendVerificationEmail(email, token)
+  return { requiresVerification: true }
+}
+```
+
+## Next.js Integration
+
+### Next.js 16+ (proxy.ts)
+
+> **Breaking Change**: Next.js 16 replaced `middleware.ts` with `proxy.ts`
+
+For protected routes, use `proxy.ts` for fast redirects only:
+
+```typescript
+// src/proxy.ts
+export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  
+  // Allow auth routes
+  if (['/login', '/verify-email', '/forgot-password', '/reset-password']
+      .some(r => pathname.startsWith(r))) {
+    return NextResponse.next()
+  }
+  
+  // Let API routes handle their own auth
+  return NextResponse.next()
+}
+```
+
+**Important**: Don't do heavy auth validation in proxy. Check `email_verified_at` in your API routes and server components instead.
+
+### Next.js 15 and earlier
+
+Use `middleware.ts` with the same logic, but export as `middleware` instead of `proxy`.
+
 ## Best Practices
 
 ### Subject Lines
@@ -323,11 +407,92 @@ const EMAIL_RATE_LIMITS = {
 - Have fallback mechanisms (show token in UI for dev)
 - Don't block user actions on email failures
 
+### Verification Strategies
+
+| Strategy | UX | Security | Use Case |
+|----------|----|---------|----|
+| Block until verified | Friction | High | Financial, healthcare |
+| Soft verification (banner) | Smooth | Medium | Social, content apps |
+| No verification | Seamless | Low | Low-risk apps |
+
+## Implementation Checklist
+
+### Email Verification Flow
+
+- [ ] Add `email_verified_at` column to users table
+- [ ] Create `email_verification_tokens` table
+- [ ] Install `resend` and `oslo` packages
+- [ ] Create email service (`lib/email/index.ts`)
+- [ ] Create token utilities (`lib/auth/tokens.ts`)
+- [ ] Modify signup to send verification email
+- [ ] Create `/api/auth/verify-email` endpoint
+- [ ] Create `/api/auth/resend-verification` endpoint (rate limited)
+- [ ] Create `/verify-email` page with resend UI
+- [ ] Update login to check `email_verified_at`
+- [ ] Handle OAuth users as pre-verified
+
+### Password Reset Flow
+
+- [ ] Create `password_reset_tokens` table
+- [ ] Create `/api/auth/forgot-password` endpoint
+- [ ] Create `/api/auth/reset-password` endpoint
+- [ ] Create `/forgot-password` page
+- [ ] Create `/reset-password` page
+- [ ] Add "Forgot password?" link to login page
+
+### Environment Variables
+
+```bash
+RESEND_API_KEY=re_xxxxx
+RESEND_FROM_EMAIL="App Name <noreply@yourdomain.com>"
+NEXT_PUBLIC_APP_URL=https://yourapp.com
+```
+
 ## References
 
 - [Deliverability Guide](references/deliverability.md) - DNS, spam prevention, reputation
 - [Email Templates](references/templates.md) - Copy best practices, compliance
 - [React Email Patterns](references/react-email.md) - Component-based email templates
+
+## Common Issues & Troubleshooting
+
+### MCP Server "MODULE_NOT_FOUND"
+
+**Cause**: Wrong path in `.cursor/mcp.json`
+
+**Fix**: Use absolute path, verify with `realpath`:
+```bash
+realpath ~/Desktop/Code/mcp-send-email/build/index.js
+```
+
+### Emails Going to Spam
+
+1. Verify DNS records (SPF, DKIM, DMARC) are correct
+2. Check sender domain matches authenticated domain
+3. Review email content for spam trigger words
+4. Test with [mail-tester.com](https://mail-tester.com)
+
+### Token Validation Failing
+
+1. Ensure you're hashing the token before lookup
+2. Check token hasn't expired
+3. Verify token wasn't already consumed (one-time use)
+4. Check for URL encoding issues in the token
+
+### OAuth Users Can't Reset Password
+
+OAuth-only users don't have passwords. Check for `password_hash`:
+```typescript
+if (!user.password_hash) {
+  return { error: 'This account uses social login.' }
+}
+```
+
+### Next.js 16 Proxy Not Working
+
+1. File must be `src/proxy.ts` (not `middleware.ts`)
+2. Export must be `proxy` (not `middleware`)
+3. Proxy runs on Node.js runtime, not Edge
 
 ## Dependencies
 
@@ -335,6 +500,12 @@ Install the Resend SDK:
 
 ```bash
 npm install resend
+```
+
+For token hashing (recommended):
+
+```bash
+npm install oslo
 ```
 
 For React Email templates (optional):

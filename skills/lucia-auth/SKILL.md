@@ -571,7 +571,50 @@ export async function signOut(): Promise<void> {
 }
 ```
 
-## Middleware
+## Proxy (Next.js 16+) / Middleware (Next.js 15 and earlier)
+
+> **Next.js 16 Breaking Change**: `middleware.ts` has been replaced by `proxy.ts`.
+> The proxy runs on the Node.js runtime (not Edge) and the export is `proxy` not `middleware`.
+
+### Next.js 16+ (proxy.ts)
+
+Create `src/proxy.ts` for protected routes:
+
+```ts
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+const protectedRoutes = ["/dashboard", "/settings", "/profile"];
+const authRoutes = ["/login", "/signup"];
+
+export function proxy(request: NextRequest): NextResponse {
+  const sessionCookie = request.cookies.get("session");
+  const { pathname } = request.nextUrl;
+
+  const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));
+  const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
+
+  // Redirect unauthenticated users from protected routes
+  if (isProtectedRoute && !sessionCookie) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // Redirect authenticated users from auth routes
+  if (isAuthRoute && sessionCookie) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+};
+```
+
+### Next.js 15 and earlier (middleware.ts)
 
 Create `src/middleware.ts` for protected routes:
 
@@ -608,6 +651,12 @@ export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };
 ```
+
+### Proxy/Middleware Best Practices
+
+- **Use for fast, early interception**: redirects, header manipulation, basic auth checks
+- **Don't use for**: DB queries, heavy validation, email sending - these belong in API routes/server components
+- **Security note**: Always validate auth in your API routes too - don't rely solely on proxy
 
 ## Environment Variables
 

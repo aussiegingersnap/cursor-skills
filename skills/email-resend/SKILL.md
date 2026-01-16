@@ -55,7 +55,13 @@ git clone https://github.com/resend/mcp-send-email.git mcp-send-email
 cd mcp-send-email && npm install && npm run build
 ```
 
-2. Add to your `.cursor/mcp.json`:
+2. Get the **absolute path** (this is critical):
+```bash
+realpath ~/Desktop/Code/mcp-send-email/build/index.js
+# Output: /Users/YOUR_USERNAME/Desktop/Code/mcp-send-email/build/index.js
+```
+
+3. Add to your `.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
@@ -67,7 +73,7 @@ cd mcp-send-email && npm install && npm run build
 }
 ```
 
-Replace `YOUR_USERNAME` and API key with your values.
+> **Common Gotcha**: The path must be absolute and correct. `~/Code/` vs `~/Desktop/Code/` will cause `MODULE_NOT_FOUND` errors. Always verify with `realpath`.
 
 ## Code Patterns
 
@@ -204,6 +210,36 @@ export async function sendWelcomeEmail(email: string, name?: string) {
 }
 ```
 
+## Database Schema
+
+Add these tables for email verification and password reset:
+
+```sql
+-- Add to users table
+ALTER TABLE users ADD COLUMN email_verified_at TEXT;
+
+-- Email verification tokens (one-time use)
+CREATE TABLE email_verification_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,  -- SHA-256 hash, never store raw
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Password reset tokens (one-time use)
+CREATE TABLE password_reset_tokens (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,  -- Use email, not user_id (user might not exist)
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_verification_tokens_hash ON email_verification_tokens(token_hash);
+CREATE INDEX idx_reset_tokens_hash ON password_reset_tokens(token_hash);
+```
+
 ## Token Generation Pattern
 
 Use secure, URL-safe tokens for verification and reset links:
@@ -215,7 +251,7 @@ import { encodeBase64url, encodeHex } from 'oslo/encoding'
 
 // Token valid for 24 hours
 const VERIFICATION_TOKEN_EXPIRY = 24 * 60 * 60 * 1000
-// Reset token valid for 1 hour
+// Reset token valid for 1 hour  
 const RESET_TOKEN_EXPIRY = 60 * 60 * 1000
 
 /**
@@ -235,6 +271,14 @@ export async function hashToken(token: string): Promise<string> {
   return encodeHex(await sha256(new TextEncoder().encode(token)))
 }
 ```
+
+### Token Security Rules
+
+1. **Never store raw tokens** - Always hash with SHA-256 before storing
+2. **One-time use** - Delete token after successful validation
+3. **Delete existing tokens** - When creating new token, delete any existing ones for that user/email
+4. **Short expiry for reset** - Password reset tokens should expire in 1 hour max
+5. **Longer expiry for verification** - Email verification can be 24-48 hours
 
 ## Rate Limiting
 

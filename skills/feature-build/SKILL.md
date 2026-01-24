@@ -1,6 +1,6 @@
 ---
 name: feature-build
-description: Complete feature development lifecycle from task selection through commit. Orchestrates component design, build loops with browser testing, PostHog analytics, and documentation updates. Use when building any new feature or enhancement.
+description: Complete feature development lifecycle from task selection through commit. Orchestrates component design, build loops with browser testing, PostHog analytics, build verification (npm run build must pass), and documentation updates. Use when building any new feature or enhancement.
 ---
 
 # Feature Build Skill
@@ -26,22 +26,22 @@ Orchestrates the complete feature development lifecycle with clear phases, entry
 Features are built through phases that can loop back when issues arise:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                                                                 │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────────┐ │
-│  │  Task    │──▶│Component │──▶│  Build   │──▶│  Analytics   │ │
-│  │Selection │   │ Design   │   │  Loop    │   │    Setup     │ │
-│  └──────────┘   └──────────┘   └──────────┘   └──────────────┘ │
-│       ▲              │              │               │          │
-│       │              ▼              ▼               ▼          │
-│       │         ◀────────────◀─────────────────────────────────│
-│       │         (loop back if criteria fail)                   │
-│       │                                                        │
-│       │                                     ┌──────────────┐   │
-│       └─────────────────────────────────────│   Commit &   │◀──│
-│                (next feature)               │  Document    │   │
-│                                             └──────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                                                                               │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌─────────────┐ │
+│  │  Task    │──▶│Component │──▶│  Build   │──▶│Analytics │──▶│   Build     │ │
+│  │Selection │   │ Design   │   │  Loop    │   │  Setup   │   │Verification │ │
+│  └──────────┘   └──────────┘   └──────────┘   └──────────┘   └─────────────┘ │
+│       ▲              │              │              │               │          │
+│       │              ▼              ▼              ▼               ▼          │
+│       │         ◀────────────◀─────────────◀──────────────────────────────────│
+│       │         (loop back if criteria fail or build errors)                  │
+│       │                                                                       │
+│       │                                                    ┌──────────────┐   │
+│       └────────────────────────────────────────────────────│   Commit &   │◀──│
+│                (next feature)                              │  Document    │   │
+│                                                            └──────────────┘   │
+└───────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Relationship to Other Skills
@@ -304,11 +304,52 @@ Examples:
 
 ---
 
-## Phase 5: Commit & Document
+## Phase 5: Build Verification
+
+### Entry Criteria
+- Feature is working in browser
+- Analytics implemented (or skipped if not applicable)
+
+### Actions
+
+1. **Run Production Build**
+   ```bash
+   npm run build
+   ```
+   - Must complete with exit code 0
+   - Fix any TypeScript errors
+   - Fix any framework-specific build errors (unused exports, client/server boundaries, etc.)
+
+2. **Check Linter**
+   ```bash
+   npm run lint
+   ```
+   - Fix any lint errors (warnings acceptable)
+
+3. **Verify No Regressions**
+   - If build fails, loop back to Phase 3 to fix issues
+   - Do NOT proceed to commit until build passes
+
+### Loop Back Triggers
+
+Return to **Phase 3** if:
+- TypeScript errors in new/modified files
+- Build errors related to imports or exports
+- Client/server component boundary issues
+
+### Exit Criteria
+- [ ] `npm run build` succeeds with exit code 0
+- [ ] `npm run lint` passes (no errors)
+- [ ] No TypeScript errors
+
+---
+
+## Phase 6: Commit & Document
 
 ### Entry Criteria
 - Feature complete and tested
 - Analytics implemented
+- Build verification passed
 
 ### Actions
 
@@ -377,9 +418,10 @@ gp
 |-------|-------|------|
 | 1. Task Selection | Feature request | Criteria defined |
 | 2. Component Design | Criteria clear | Components in style-guide |
-| 3. Build Loop | Components ready | All criteria pass |
+| 3. Build Loop | Components ready | All criteria pass in browser |
 | 4. Analytics | Feature working | Events instrumented |
-| 5. Commit | Analytics done | Docs updated, committed |
+| 5. Build Verification | Analytics done | `npm run build` succeeds |
+| 6. Commit | Build passes | Docs updated, committed |
 
 ### Common Commands
 

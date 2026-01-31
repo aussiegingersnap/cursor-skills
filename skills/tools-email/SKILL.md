@@ -380,7 +380,7 @@ export function proxy(request: NextRequest) {
 
 **Important**: Don't do heavy auth validation in proxy. Check `email_verified_at` in your API routes and server components instead.
 
-### Next.js 15 and earlier
+### Next.js 16 and earlier
 
 Use `middleware.ts` with the same logic, but export as `middleware` instead of `proxy`.
 

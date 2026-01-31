@@ -10,7 +10,7 @@ Patterns and conventions specific to Next.js 16, including the new proxy.ts syst
 ## When to Use This Skill
 
 - Setting up a new Next.js 16 project
-- Migrating from Next.js 15 or earlier
+- Migrating from Next.js 16 or earlier
 - Implementing route protection with proxy.ts
 - Configuring caching and PPR
 - Understanding Next.js 16 breaking changes
@@ -506,7 +506,7 @@ Ensure `tsconfig.json` includes:
 }
 ```
 
-## Migration from Next.js 15
+## Migration from Next.js 16
 
 ### Checklist
 

@@ -571,7 +571,7 @@ export async function signOut(): Promise<void> {
 }
 ```
 
-## Proxy (Next.js 16+) / Middleware (Next.js 15 and earlier)
+## Proxy (Next.js 16+) / Middleware (Next.js 16 and earlier)
 
 > **Next.js 16 Breaking Change**: `middleware.ts` has been replaced by `proxy.ts`.
 > The proxy runs on the Node.js runtime (not Edge) and the export is `proxy` not `middleware`.
@@ -614,7 +614,7 @@ export const config = {
 };
 ```
 
-### Next.js 15 and earlier (middleware.ts)
+### Next.js 16 and earlier (middleware.ts)
 
 Create `src/middleware.ts` for protected routes:
 

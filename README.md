@@ -79,10 +79,16 @@ See [MCP Setup](#mcp-server-setup) below for details.
 | Skill | Description |
 |-------|-------------|
 | `db-postgres` | PostgreSQL with Drizzle ORM |
-| `db-sqlite` | SQLite with Drizzle + Litestream backup |
+| `db-sqlite` | SQLite with Prisma + Litestream backup |
 | `api-rest` | REST API conventions with Zod validation |
 | `auth-better-auth` | Better Auth integration |
 | `auth-lucia` | Lucia auth patterns |
+
+### MCP & AI Integration
+
+| Skill | Description |
+|-------|-------------|
+| `mcp-apps` | Build MCP Apps with interactive UI for Claude/ChatGPT/VSCode |
 
 ### Infrastructure (`infra-`, `secrets-`)
 

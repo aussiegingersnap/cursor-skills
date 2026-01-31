@@ -1,5 +1,5 @@
 ---
-name: design-system
+name: ui-design-system
 description: Complete design system with principles + living style guide. Enforces precise, crafted UI inspired by Linear, Notion, and Stripe. Includes boilerplate style-guide page template for Next.js/React projects. Use when building any UI that needs Jony Ive-level precision.
 ---
 

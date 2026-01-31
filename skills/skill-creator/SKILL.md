@@ -1,12 +1,30 @@
 ---
 name: skill-creator
-description: Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude's capabilities with specialized knowledge, workflows, or tool integrations.
+description: Orchestrator skill for creating effective skills. Guides through 6 steps - understanding examples, planning contents with scope assessment, initialization, editing with contracts, packaging, and iteration. Use when creating a new skill or updating an existing skill.
+skill_type: orchestrator
 license: Complete terms in LICENSE.txt
 ---
 
 # Skill Creator
 
 This skill provides guidance for creating effective skills.
+
+## Contract
+
+**Inputs:**
+- User request to create or update a skill
+- Domain knowledge or examples of how the skill will be used
+- (Optional) Existing skill directory if updating
+
+**Outputs:**
+- Complete skill directory with SKILL.md and optional resources
+- Validated and packaged skill (if packaging requested)
+
+**Success Criteria:**
+- [ ] Skill has valid SKILL.md with frontmatter (name, description, skill_type)
+- [ ] Contract section defines inputs, outputs, success criteria
+- [ ] Skill type (atomic/orchestrator) is appropriate for scope
+- [ ] Bundled resources (scripts, references, assets) support the skill's purpose
 
 ## About Skills
 
@@ -38,6 +56,29 @@ skill-name/
     ├── references/       - Documentation intended to be loaded into context as needed
     └── assets/           - Files used in output (templates, icons, fonts, etc.)
 ```
+
+### Naming Convention
+
+Skill names use **category prefixes** for organization. The prefix indicates the skill's domain.
+
+| Prefix | Category | Examples |
+|--------|----------|----------|
+| `db-` | Database | `db-postgres`, `db-sqlite` |
+| `auth-` | Authentication | `auth-better-auth`, `auth-lucia` |
+| `infra-` | Infrastructure & deployment | `infra-railway`, `infra-docker`, `infra-env` |
+| `ui-` | Frontend & design | `ui-design-system`, `ui-principles` |
+| `state-` | State management | `state-effector`, `state-tanstack` |
+| `tools-` | External integrations | `tools-linear`, `tools-email`, `tools-youtube` |
+| `secrets-` | Secrets management | `secrets-1password` |
+| (none) | Core workflow skills | `feature-build`, `skill-creator`, `judge` |
+
+**Framework skills** use the framework name first: `nextjs-16`, `react-19`
+
+**Naming rules:**
+- Lowercase with hyphens: `my-skill-name`
+- Category prefix when applicable
+- Specific enough to be discoverable
+- Max 40 characters
 
 #### SKILL.md (required)
 
@@ -84,6 +125,50 @@ Skills use a three-level loading system to manage context efficiently:
 
 *Unlimited because scripts can be executed without reading into context window.
 
+## Skill Scope Assessment (For Complex Skills)
+
+For most simple skills, skip this section - just build what you need. For complex workflows, consider whether the skill should be **atomic** or an **orchestrator**.
+
+### Atomic Skills
+
+Atomic skills do ONE thing well with clear boundaries. They:
+
+- Complete a single, focused task
+- Receive minimum viable context (only what's needed for the task)
+- Produce a defined output
+- Execute statelessly (no accumulated context between invocations)
+- Do not coordinate with or reference other skills
+
+**Examples**: `db-postgres`, `auth-better-auth`, `email-resend`, `docker-local`
+
+### Orchestrator Skills
+
+Orchestrator skills coordinate multiple phases or compose atomic skills. They:
+
+- Break complex work into discrete steps
+- Delegate to atomic skills or phases
+- Manage workflow state through external mechanisms (files, git)
+- May loop back to earlier phases based on results
+
+**Examples**: `feature-build`, `project-setup`
+
+### Assessment Questions
+
+To determine skill type, ask:
+
+1. **Does the skill have 3+ distinct phases?** → Likely an orchestrator
+2. **Does the skill reference or invoke other skills?** → Likely an orchestrator
+3. **Can the skill complete in one focused session?** → Likely atomic
+4. **Does the skill need project-wide context?** → Consider splitting or making it an orchestrator
+
+### Design Principle
+
+> **Complexity belongs in orchestration, not in individual skills.**
+
+Atomic skills that try to do too much become brittle and hard to compose. When in doubt, split into smaller atomic skills and create an orchestrator to coordinate them.
+
+For detailed patterns on composing skills, see `references/orchestration-patterns.md`.
+
 ## Skill Creation Process
 
 To create a skill, follow the "Skill Creation Process" in order, skipping steps only if there is a clear reason why they are not applicable.
@@ -106,6 +191,16 @@ To avoid overwhelming users, avoid asking too many questions in a single message
 Conclude this step when there is a clear sense of the functionality the skill should support.
 
 ### Step 2: Planning the Reusable Skill Contents
+
+Before diving into implementation details, assess the skill's scope:
+
+1. **Is this a single focused task or a multi-step workflow?**
+   - Single task → Design as atomic skill
+   - Multi-step workflow → Either split into atomic skills OR design as explicit orchestrator
+
+2. **If multi-step, can the phases be executed independently?**
+   - Yes → Create separate atomic skills + orchestrator to compose them
+   - No → Design as orchestrator with clear phase boundaries
 
 To turn concrete examples into an effective skill, analyze each example by:
 
@@ -171,6 +266,35 @@ To complete SKILL.md, answer the following questions:
 1. What is the purpose of the skill, in a few sentences?
 2. When should the skill be used?
 3. In practice, how should Claude use the skill? All reusable skill contents developed above should be referenced so that Claude knows how to use them.
+
+#### Add a Contract Section (Optional - For Complex Skills)
+
+For multi-phase workflows or skills that will be composed with others, consider adding a Contract section that defines clear boundaries:
+
+```markdown
+## Contract
+
+**Inputs:**
+- [What the skill needs to begin - files, context, user input]
+
+**Outputs:**
+- [What the skill produces when complete]
+
+**Success Criteria:**
+- [ ] [Testable condition that indicates successful completion]
+```
+
+**When to add a contract:**
+
+- Orchestrator skills with multiple phases
+- Skills that will be invoked by other orchestrators
+- Complex workflows where handoff points matter
+
+**When to skip:**
+
+- Simple, single-purpose skills (e.g., "format SQL", "generate commit message")
+- Personal productivity skills with obvious scope
+- Skills where the description already makes boundaries clear
 
 ### Step 5: Packaging a Skill
 

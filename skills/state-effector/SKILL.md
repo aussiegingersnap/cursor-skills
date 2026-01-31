@@ -1,5 +1,5 @@
 ---
-name: effector
+name: state-effector
 description: Effector reactive state management for React/Next.js applications. This skill should be used when implementing Effector stores, events, and effects, or when choosing Effector as the state management solution.
 ---
 

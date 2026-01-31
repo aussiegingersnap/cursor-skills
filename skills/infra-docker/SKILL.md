@@ -1,5 +1,5 @@
 ---
-name: docker-local
+name: infra-docker
 description: Local development environment with Docker Compose for PostgreSQL and other services. This skill should be used when setting up local infrastructure, managing development databases, or configuring containerized services.
 ---
 

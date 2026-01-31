@@ -1,5 +1,5 @@
 ---
-name: linear
+name: tools-linear
 description: Issue tracking and project management with Linear MCP. Use when creating issues, managing tasks, updating status, or working with Linear projects. Provides conventions for sizing, status, comments, and labels.
 ---
 

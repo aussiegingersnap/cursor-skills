@@ -1,5 +1,5 @@
 ---
-name: state-management
+name: state-tanstack
 description: State management patterns using Tanstack Query for server state and Zustand for client state. This skill should be used when setting up data fetching, implementing mutations, managing UI state, or organizing stores in React applications.
 ---
 

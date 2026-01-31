@@ -1,5 +1,5 @@
 ---
-name: 1password
+name: secrets-1password
 description: 1Password Developer CLI skill for secure secrets management. This skill should be used when creating, reading, updating, or deleting secrets in 1Password vaults, injecting secrets into script execution, or setting up 1Password CLI authentication.
 ---
 

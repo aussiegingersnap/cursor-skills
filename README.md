@@ -22,7 +22,7 @@ Clone and copy specific skills to your project:
 
 ```bash
 git clone https://github.com/aussiegingersnap/cursor-skills /tmp/cursor-skills
-cp -r /tmp/cursor-skills/skills/design-system .cursor/skills/
+cp -r /tmp/cursor-skills/skills/ui-design-system .cursor/skills/
 ```
 
 ### Option 3: MCP Server (Advanced)
@@ -58,22 +58,23 @@ See [MCP Setup](#mcp-server-setup) below for details.
 
 | Skill | Description |
 |-------|-------------|
-| `feature-build` | Complete feature development lifecycle |
+| `feature-build` | Complete feature development lifecycle with phases |
+| `skill-creator` | Create new skills with guided workflow |
 | `documentation` | Project documentation standards |
 | `versioning` | Semantic versioning with CHANGELOG |
-| `skill-creator` | Create new skills |
+| `judge` | Quality review for complex changes |
 
-### Frontend
+### UI & Frontend (`ui-`, `state-`)
 
 | Skill | Description |
 |-------|-------------|
-| `design-system` | Linear/Notion-inspired UI patterns with style guide |
-| `design-principles` | Minimal, crafted UI principles |
+| `ui-design-system` | Linear/Notion-inspired UI patterns with style guide |
+| `ui-principles` | Minimal, crafted UI principles |
 | `nextjs-16` | Next.js 16 App Router patterns |
-| `effector` | Effector reactive state management |
-| `state-management` | Tanstack Query + Effector patterns |
+| `state-effector` | Effector reactive state management |
+| `state-tanstack` | Tanstack Query + Zustand patterns |
 
-### Backend & Data
+### Backend & Data (`db-`, `auth-`, `api-`)
 
 | Skill | Description |
 |-------|-------------|
@@ -83,23 +84,25 @@ See [MCP Setup](#mcp-server-setup) below for details.
 | `auth-better-auth` | Better Auth integration |
 | `auth-lucia` | Lucia auth patterns |
 
-### Infrastructure
+### Infrastructure (`infra-`, `secrets-`)
 
 | Skill | Description |
 |-------|-------------|
-| `docker-local` | Local Docker development |
+| `infra-docker` | Local Docker development |
 | `infra-railway` | Railway deployment |
-| `env` | Environment configuration with 1Password |
-| `1password` | 1Password CLI for secrets management |
+| `infra-env` | Environment configuration patterns |
+| `secrets-1password` | 1Password CLI for secrets management |
 
-### Productivity
+### Tools & Integrations (`tools-`)
 
 | Skill | Description |
 |-------|-------------|
-| `linear` | Linear issue tracking |
+| `tools-linear` | Linear issue tracking |
 | `tools-youtube` | YouTube downloads and transcripts |
-| `repo-review` | GitHub repository analysis |
-| `email-resend` | Email with Resend and React Email |
+| `tools-repo-review` | GitHub repository analysis |
+| `tools-email` | Email with Resend and React Email |
+| `tools-artifacts` | Build HTML artifacts with React and shadcn/ui |
+| `tools-posthog` | Feature flags with PostHog |
 
 ### Document Skills
 
@@ -109,13 +112,6 @@ See [MCP Setup](#mcp-server-setup) below for details.
 | `document-skills/pdf` | PDF generation and manipulation |
 | `document-skills/pptx` | PowerPoint presentations |
 | `document-skills/xlsx` | Excel spreadsheets |
-
-### Creative
-
-| Skill | Description |
-|-------|-------------|
-| `artifacts-builder` | Build HTML artifacts with React and shadcn/ui |
-| `feature-gating` | Feature flags with PostHog |
 
 ---
 
@@ -258,9 +254,11 @@ cursor-skills/
 ├── mcp/
 │   └── skills_mcp.py          # MCP server
 ├── skills/                    # Skills collection
-│   ├── design-system/
-│   ├── db-postgres/
-│   ├── feature-build/
+│   ├── ui-design-system/      # ui- prefix for frontend
+│   ├── db-postgres/           # db- prefix for database
+│   ├── infra-railway/         # infra- prefix for infrastructure
+│   ├── tools-linear/          # tools- prefix for integrations
+│   ├── feature-build/         # No prefix for core workflow
 │   └── ...
 ├── README.md
 └── LICENSE

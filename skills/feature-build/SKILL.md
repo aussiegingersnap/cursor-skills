@@ -1,11 +1,32 @@
 ---
 name: feature-build
-description: Complete feature development lifecycle from task selection through commit. Orchestrates component design, build loops with browser testing, PostHog analytics, build verification (npm run build must pass), and documentation updates. Use when building any new feature or enhancement.
+description: Orchestrator skill for the complete feature development lifecycle. Coordinates 5 phases - task selection, component design, build loop, analytics setup, and commit/documentation. Use when building any new feature or enhancement that requires multiple steps.
+skill_type: orchestrator
 ---
 
 # Feature Build Skill
 
 Orchestrates the complete feature development lifecycle with clear phases, entry/exit criteria, and conversation loop patterns. This skill transforms feature requests into shipped, tested, and documented code.
+
+## Contract
+
+**Inputs:**
+- Feature request or task from TASKS.md
+- Project with existing component structure (components/ui/)
+- (Optional) Style guide page for component development
+
+**Outputs:**
+- Working feature verified in browser
+- Components exported from barrel file
+- PostHog analytics instrumented
+- TASKS.md and CHANGELOG.md updated
+- Clean git commit(s) with conventional format
+
+**Success Criteria:**
+- [ ] All acceptance criteria pass in browser testing
+- [ ] No console errors or build failures
+- [ ] Analytics events firing correctly
+- [ ] Documentation updated
 
 ## Philosophy
 

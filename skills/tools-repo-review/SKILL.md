@@ -1,4 +1,5 @@
 ---
+name: tools-repo-review
 description: Comprehensive GitHub repository analysis for engineering managers with contribution stats, code quality review, team health metrics, and actionable management outputs
 ---
 

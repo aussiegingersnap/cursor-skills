@@ -1,5 +1,5 @@
 ---
-name: env
+name: infra-env
 description: Environment variable conventions and security practices for Next.js projects. This skill should be used when setting up environment configuration, managing secrets, or establishing security patterns for a new project.
 ---
 

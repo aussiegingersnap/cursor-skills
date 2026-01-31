@@ -1,5 +1,5 @@
 ---
-name: feature-gating
+name: tools-posthog
 description: Standard pattern for implementing freemium/pro features with PostHog feature flags, usage tracking, upgrade prompts, and Stripe-ready payment hooks. Use when adding any feature that will eventually be paid.
 ---
 

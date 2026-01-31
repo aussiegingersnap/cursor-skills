@@ -1,298 +1,387 @@
-# SQLite Database Boilerplate
+# SQLite + Prisma Boilerplate
 
-Complete setup pattern for SQLite with better-sqlite3 in TypeScript projects.
+Complete setup pattern for SQLite with Prisma in TypeScript projects.
 
-## Database Client (`src/lib/db/index.ts`)
+## Prisma Schema (`prisma/schema.prisma`)
 
-```typescript
-/**
- * SQLite Database Client
- * Local-first storage using better-sqlite3
- */
-
-import Database from 'better-sqlite3'
-import path from 'path'
-import fs from 'fs'
-
-// Database file location
-const DB_DIR = process.env.DB_PATH || path.join(process.cwd(), 'data')
-const DB_FILE = path.join(DB_DIR, 'app.db')
-
-// Singleton instance
-let db: Database.Database | null = null
-
-/**
- * Get or create the database connection
- */
-export function getDb(): Database.Database {
-  if (db) return db
-
-  console.log(`[DB] Initializing database at: ${DB_FILE}`)
-  
-  // Ensure data directory exists
-  if (!fs.existsSync(DB_DIR)) {
-    console.log(`[DB] Creating data directory: ${DB_DIR}`)
-    fs.mkdirSync(DB_DIR, { recursive: true })
-  }
-
-  // Create database connection
-  db = new Database(DB_FILE)
-  
-  // Enable WAL mode for better performance
-  db.pragma('journal_mode = WAL')
-  
-  // Initialize schema and run migrations
-  initSchema(db)
-  runMigrations(db)
-
-  console.log('[DB] Database initialization complete')
-  return db
+```prisma
+generator client {
+  provider = "prisma-client-js"
 }
 
-/**
- * Close the database connection
- */
-export function closeDb(): void {
-  if (db) {
-    db.close()
-    db = null
-  }
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // ============================================
-// Migration System
+// Example: User model
 // ============================================
 
-interface Migration {
-  version: number
-  name: string
-  up: (db: Database.Database) => void
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  posts Post[]
 }
 
-/**
- * All migrations in order. Add new migrations to the end.
- * Each migration runs once and is tracked in _migrations table.
- */
-const MIGRATIONS: Migration[] = [
-  // Add migrations here as the schema evolves
-  // {
-  //   version: 1,
-  //   name: 'add_feature_column',
-  //   up: (db) => {
-  //     db.exec('ALTER TABLE users ADD COLUMN feature TEXT')
-  //   }
-  // },
-]
-
-/**
- * Run versioned migrations. Each migration runs exactly once.
- * Safe to call multiple times - already-run migrations are skipped.
- */
-function runMigrations(database: Database.Database): void {
-  console.log('[DB] Checking migrations...')
-  
-  try {
-    // Create migrations tracking table
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS _migrations (
-        version INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `)
-    
-    // Get already-applied migrations
-    const applied = database.prepare('SELECT version FROM _migrations').all() as { version: number }[]
-    const appliedVersions = new Set(applied.map(m => m.version))
-    
-    // Run pending migrations
-    const pending = MIGRATIONS.filter(m => !appliedVersions.has(m.version))
-    
-    if (pending.length === 0) {
-      console.log('[DB] No pending migrations')
-      return
-    }
-    
-    console.log(`[DB] Running ${pending.length} migration(s)...`)
-    
-    for (const migration of pending.sort((a, b) => a.version - b.version)) {
-      console.log(`[DB] Running migration ${migration.version}: ${migration.name}`)
-      
-      // Run in transaction for safety
-      database.exec('BEGIN TRANSACTION')
-      try {
-        migration.up(database)
-        database.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(migration.version, migration.name)
-        database.exec('COMMIT')
-        console.log(`[DB] ✓ Migration ${migration.version} complete`)
-      } catch (err) {
-        database.exec('ROLLBACK')
-        throw err
-      }
-    }
-    
-    console.log('[DB] All migrations complete')
-  } catch (error) {
-    console.error('[DB] Migration error:', error)
-    throw error
-  }
-}
-
-/**
- * Initialize database schema
- */
-function initSchema(database: Database.Database): void {
-  // Option 1: Load from schema.sql file (development)
-  const schemaPath = path.join(__dirname, 'schema.sql')
-  
-  if (fs.existsSync(schemaPath)) {
-    console.log('[DB] Loading schema from file:', schemaPath)
-    const schema = fs.readFileSync(schemaPath, 'utf-8')
-    database.exec(schema)
-  } else {
-    // Option 2: Inline schema (production - __dirname may not work)
-    console.log('[DB] Using inline schema (production mode)')
-    database.exec(`
-      -- Add your base schema here
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        email TEXT UNIQUE,
-        display_name TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `)
-  }
+enum Role {
+  ADMIN
+  USER
 }
 
 // ============================================
-// Types
+// Example: Post model with relation
 // ============================================
 
-export interface DbUser {
-  id: string
-  email: string | null
-  display_name: string | null
-  created_at: string
-}
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @default("")
+  published Boolean  @default(false)
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-// Add more interfaces as tables are created
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([authorId])
+  @@index([published, createdAt])
+}
 ```
 
-## Base Schema (`src/lib/db/schema.sql`)
-
-```sql
--- Application SQLite Schema
--- This file defines the base schema for fresh installs
--- Migrations handle incremental changes
-
--- ============================================
--- Users
--- ============================================
-
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  email TEXT UNIQUE,
-  display_name TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
--- ============================================
--- Indexes
--- ============================================
-
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-```
-
-## Query Functions (`src/lib/db/queries.ts`)
+## Prisma Client Singleton (`src/lib/db/index.ts`)
 
 ```typescript
-import { getDb, DbUser } from './index'
+import { PrismaClient } from '@prisma/client'
 
-/**
- * Get user by ID
- */
-export function getUserById(id: string): DbUser | undefined {
-  const db = getDb()
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as DbUser | undefined
+// Prevent multiple instances during hot reload in development
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined
 }
 
-/**
- * Get user by email
- */
-export function getUserByEmail(email: string): DbUser | undefined {
-  const db = getDb()
-  return db.prepare('SELECT * FROM users WHERE email = ?').get(email) as DbUser | undefined
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  log: process.env.NODE_ENV === 'development' 
+    ? ['query', 'error', 'warn'] 
+    : ['error'],
+})
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma
 }
 
-/**
- * Create a new user
- */
-export function createUser(user: Omit<DbUser, 'created_at'>): DbUser {
-  const db = getDb()
-  
-  db.prepare(`
-    INSERT INTO users (id, email, display_name)
-    VALUES (?, ?, ?)
-  `).run(user.id, user.email, user.display_name)
-  
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(user.id) as DbUser
-}
+// Named export for convenience
+export const db = prisma
 
-/**
- * Update user
- */
-export function updateUser(id: string, updates: Partial<Omit<DbUser, 'id' | 'created_at'>>): boolean {
-  const db = getDb()
-  
-  const fields: string[] = []
-  const values: unknown[] = []
-  
-  if (updates.email !== undefined) {
-    fields.push('email = ?')
-    values.push(updates.email)
+export default prisma
+```
+
+## Environment Files
+
+### Development (`.env.local`)
+
+```bash
+# SQLite database in prisma folder (gitignored)
+DATABASE_URL="file:./dev.db"
+```
+
+### Production (Railway)
+
+```bash
+# SQLite database on Railway volume
+DATABASE_URL="file:/data/app.db"
+```
+
+### Example (`.env.example`)
+
+```bash
+# Database
+# Development: file:./dev.db
+# Production (Railway): file:/data/app.db
+DATABASE_URL="file:./dev.db"
+```
+
+## Package.json Scripts
+
+```json
+{
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:prod": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate"
   }
-  if (updates.display_name !== undefined) {
-    fields.push('display_name = ?')
-    values.push(updates.display_name)
-  }
-  
-  if (fields.length === 0) return false
-  
-  values.push(id)
-  const result = db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values)
-  
-  return result.changes > 0
+}
+```
+
+## Seed File (`prisma/seed.ts`)
+
+```typescript
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
+
+async function main() {
+  console.log('Seeding database...')
+
+  // Create admin user
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@example.com' },
+    update: {},
+    create: {
+      email: 'admin@example.com',
+      name: 'Admin User',
+      role: 'ADMIN',
+    },
+  })
+
+  console.log('Created admin:', admin.email)
+
+  // Create sample posts
+  await prisma.post.createMany({
+    data: [
+      { title: 'First Post', content: 'Hello world!', authorId: admin.id, published: true },
+      { title: 'Draft Post', content: 'Work in progress...', authorId: admin.id },
+    ],
+    skipDuplicates: true,
+  })
+
+  console.log('Seeding complete!')
 }
 
-/**
- * Delete user
- */
-export function deleteUser(id: string): boolean {
-  const db = getDb()
-  const result = db.prepare('DELETE FROM users WHERE id = ?').run(id)
-  return result.changes > 0
+main()
+  .catch((e) => {
+    console.error('Seeding failed:', e)
+    process.exit(1)
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })
+```
+
+Add to `package.json`:
+
+```json
+{
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
 }
 ```
 
 ## .gitignore Additions
 
 ```gitignore
-# SQLite
+# Prisma
+prisma/dev.db
+prisma/dev.db-journal
 *.db
-*.db-shm
-*.db-wal
+*.db-journal
+
+# Data folder (Railway volume mount)
 data/
 ```
 
-## Package.json Dependencies
+## Package Dependencies
 
 ```json
 {
   "dependencies": {
-    "better-sqlite3": "^12.6.0"
+    "@prisma/client": "^6.0.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13"
+    "prisma": "^6.0.0",
+    "tsx": "^4.0.0"
   }
 }
+```
+
+## Query Examples (`src/lib/db/queries.ts`)
+
+```typescript
+import { prisma } from './index'
+import type { User, Post, Prisma } from '@prisma/client'
+
+// ============================================
+// User queries
+// ============================================
+
+export async function getUserById(id: string): Promise<User | null> {
+  return prisma.user.findUnique({
+    where: { id },
+  })
+}
+
+export async function getUserByEmail(email: string): Promise<User | null> {
+  return prisma.user.findUnique({
+    where: { email },
+  })
+}
+
+export async function createUser(data: Prisma.UserCreateInput): Promise<User> {
+  return prisma.user.create({ data })
+}
+
+export async function updateUser(
+  id: string, 
+  data: Prisma.UserUpdateInput
+): Promise<User> {
+  return prisma.user.update({
+    where: { id },
+    data,
+  })
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  await prisma.user.delete({ where: { id } })
+}
+
+// ============================================
+// Post queries
+// ============================================
+
+export async function getPublishedPosts(options?: {
+  take?: number
+  skip?: number
+}): Promise<Post[]> {
+  return prisma.post.findMany({
+    where: { published: true },
+    orderBy: { createdAt: 'desc' },
+    take: options?.take ?? 10,
+    skip: options?.skip ?? 0,
+  })
+}
+
+export async function getPostsByAuthor(authorId: string): Promise<Post[]> {
+  return prisma.post.findMany({
+    where: { authorId },
+    orderBy: { createdAt: 'desc' },
+  })
+}
+
+export async function getPostWithAuthor(id: string) {
+  return prisma.post.findUnique({
+    where: { id },
+    include: { author: true },
+  })
+}
+
+export async function createPost(
+  data: Prisma.PostCreateInput
+): Promise<Post> {
+  return prisma.post.create({ data })
+}
+
+export async function publishPost(id: string): Promise<Post> {
+  return prisma.post.update({
+    where: { id },
+    data: { published: true },
+  })
+}
+
+// ============================================
+// Transactions
+// ============================================
+
+export async function createUserWithPost(
+  userData: Prisma.UserCreateInput,
+  postTitle: string
+) {
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({ data: userData })
+    
+    const post = await tx.post.create({
+      data: {
+        title: postTitle,
+        authorId: user.id,
+      },
+    })
+    
+    return { user, post }
+  })
+}
+```
+
+## Type Exports
+
+Prisma auto-generates types. Import them from `@prisma/client`:
+
+```typescript
+import type { User, Post, Role, Prisma } from '@prisma/client'
+
+// Use generated types
+function formatUser(user: User): string {
+  return `${user.name} (${user.email})`
+}
+
+// Use input types for create/update
+function validateUserInput(data: Prisma.UserCreateInput): boolean {
+  return data.email.includes('@')
+}
+
+// Use with relations
+type UserWithPosts = Prisma.UserGetPayload<{
+  include: { posts: true }
+}>
+```
+
+## Next.js API Route Example
+
+```typescript
+// app/api/users/route.ts
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/db'
+
+export async function GET() {
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+    },
+  })
+  
+  return NextResponse.json(users)
+}
+
+export async function POST(request: Request) {
+  const body = await request.json()
+  
+  const user = await prisma.user.create({
+    data: {
+      email: body.email,
+      name: body.name,
+    },
+  })
+  
+  return NextResponse.json(user, { status: 201 })
+}
+```
+
+## Railway Startup Script
+
+For production deployments, run migrations before starting the app:
+
+```json
+{
+  "scripts": {
+    "start": "npm run db:migrate:prod && next start"
+  }
+}
+```
+
+Or in `railway.toml`:
+
+```toml
+[deploy]
+startCommand = "npx prisma migrate deploy && npm run start"
 ```

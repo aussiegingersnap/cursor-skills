@@ -1,19 +1,19 @@
 ---
 name: db-sqlite
-description: SQLite database management with better-sqlite3, versioned migrations, and Railway deployment. This skill should be used when creating database schemas, writing migrations, managing SQLite on Railway volumes, or troubleshooting database issues.
+description: SQLite database management with Prisma ORM, type-safe queries, and Railway deployment with Litestream backup. This skill should be used when creating database schemas, writing migrations, managing SQLite on Railway volumes, or troubleshooting database issues.
 ---
 
 # SQLite Database Skill
 
-Comprehensive patterns for SQLite database management in Node.js/TypeScript projects using `better-sqlite3`, including a versioned migration system and Railway deployment workflows.
+Comprehensive patterns for SQLite database management in Node.js/TypeScript projects using Prisma ORM, including schema-first development and Railway deployment with Litestream backup.
 
 ## When to Use This Skill
 
 - Setting up SQLite in a new project
-- Writing database migrations
-- Adding tables or columns to existing schemas
+- Defining database schemas with Prisma
+- Running migrations with `prisma migrate`
 - Deploying SQLite to Railway with persistent volumes
-- Backing up or restoring production databases
+- Backing up production databases with Litestream
 - Troubleshooting database issues
 
 ## Core Concepts
@@ -25,6 +25,7 @@ SQLite is appropriate when:
 - Read-heavy workloads (or moderate writes)
 - Simplicity is valued over horizontal scaling
 - Local-first or embedded scenarios
+- Cost-sensitive deployments
 
 Consider PostgreSQL when:
 - Multiple servers need database access
@@ -39,31 +40,22 @@ SQLite on Railway requires understanding these constraints:
 1. **Volume mounting** - Database file must live on a Railway volume (not container filesystem)
 2. **No remote access** - Cannot connect database GUI tools directly to production
 3. **Single container** - Only one instance can write to the database
-4. **`railway run` limitations** - One-off commands don't have volume access; use Litestream restore instead
+4. **Backup strategy** - Use Litestream for continuous backup to Railway Bucket
 
 ### Critical: Railway Volume Path vs Container Path
 
 **This is the #1 cause of data loss on Railway SQLite deployments.**
 
-Railway volumes mount at a specific path (e.g., `/data`). But your app runs in `/app/` by default. If your code writes to `./data/study-bible.db`, it creates the file at `/app/data/study-bible.db` — **which is NOT on the volume** and gets destroyed on every deploy.
+Railway volumes mount at a specific path (e.g., `/data`). But your app runs in `/app/` by default. If your code writes to `./prisma/app.db`, it creates the file at `/app/prisma/app.db` — **which is NOT on the volume** and gets destroyed on every deploy.
 
-**Solution**: Set `DB_PATH=/data` in Railway environment variables.
+**Solution**: Set `DATABASE_URL` to use the volume path in production.
 
 ```
 # Wrong (data lost on each deploy):
-/app/data/study-bible.db  ← Container filesystem, not persistent
+file:/app/prisma/app.db  ← Container filesystem, not persistent
 
 # Correct (data persists):
-/data/study-bible.db      ← Railway volume, persistent + backed up
-```
-
-**Verify your setup**:
-```bash
-railway variables | grep DB_PATH
-# Should show: DB_PATH=/data
-
-railway variables | grep RAILWAY_VOLUME_MOUNT_PATH
-# Should show: RAILWAY_VOLUME_MOUNT_PATH=/data
+file:/data/app.db        ← Railway volume, persistent + backed up
 ```
 
 ## Database Setup Pattern
@@ -71,265 +63,380 @@ railway variables | grep RAILWAY_VOLUME_MOUNT_PATH
 ### Package Installation
 
 ```bash
-npm install better-sqlite3
-npm install -D @types/better-sqlite3
+npm install @prisma/client
+npm install -D prisma
 ```
 
 ### Directory Structure
 
 ```
+prisma/
+├── schema.prisma    # Database schema (source of truth)
+└── migrations/      # Generated SQL migrations
+
 src/lib/db/
-├── index.ts      # Connection, migrations, types
-├── schema.sql    # Base schema (for fresh installs)
-└── queries.ts    # Typed query functions
+└── index.ts         # Prisma client singleton
 ```
 
 ### Environment Configuration
 
 ```bash
-# .env.local (development) — NOT NEEDED
-# DB_PATH defaults to ./data (process.cwd()/data)
-# Only set if you want a custom location
+# .env.local (development)
+DATABASE_URL="file:./prisma/dev.db"
 
 # Railway (production) — REQUIRED
-# Must match the volume mount path exactly
-railway variables --set DB_PATH=/data
+# Must point to volume mount path
+DATABASE_URL="file:/data/app.db"
 ```
 
-**The app code should default correctly:**
-```typescript
-const DB_DIR = process.env.DB_PATH || path.join(process.cwd(), 'data')
-const DB_FILE = path.join(DB_DIR, 'study-bible.db')
-```
+### Prisma Schema Setup
 
-| Environment | DB_PATH | Actual Path | Persistent? |
-|------------|---------|-------------|-------------|
-| Local dev | (unset) | `./data/study-bible.db` | ✅ Yes |
-| Railway | `/data` | `/data/study-bible.db` | ✅ Yes (volume) |
-| Railway | (unset) | `/app/data/study-bible.db` | ❌ **NO** — lost on deploy |
+Create `prisma/schema.prisma`:
 
-### Connection Singleton
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
 
-See `references/boilerplate.md` for the complete database initialization pattern with:
-- Singleton connection management
-- WAL mode for performance
-- Schema initialization
-- Automatic migration running
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
 
-## Migration System
-
-The migration system provides versioned, tracked schema changes that run automatically on application startup.
-
-### Migration Structure
-
-```typescript
-interface Migration {
-  version: number    // Incrementing integer
-  name: string       // Descriptive snake_case name
-  up: (db: Database.Database) => void
+// Define your models here
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 ```
 
-### Writing Migrations
+### Prisma Client Singleton
 
-See `references/migrations.md` for complete patterns including:
-- Adding columns safely
-- Creating new tables
-- Adding indexes
-- Complex multi-step migrations
-
-### Key Rules
-
-1. **Never modify existing migrations** - They may have already run in production
-2. **Always increment version** - Each migration gets the next integer
-3. **Use IF NOT EXISTS** - Makes migrations idempotent
-4. **Check columns before adding** - SQLite doesn't support `IF NOT EXISTS` for columns
-5. **Update schema.sql too** - Keep base schema in sync for fresh installs
-
-### Adding a New Migration
-
-1. Open `src/lib/db/index.ts`
-2. Add new entry to `MIGRATIONS` array:
+Create `src/lib/db/index.ts`:
 
 ```typescript
+import { PrismaClient } from '@prisma/client'
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined
+}
+
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+})
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma
+}
+
+export default prisma
+```
+
+### Package.json Scripts
+
+```json
 {
-  version: 5, // Next version number
-  name: 'add_feature_x_table',
-  up: (db) => {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS feature_x (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        data TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_feature_x_user ON feature_x(user_id);
-    `)
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:prod": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset"
   }
 }
 ```
 
-3. Update `schema.sql` with the same table definition
-4. Add TypeScript interface to `index.ts`
-5. Deploy - migration runs automatically on startup
+## Schema Patterns
+
+### Primary Keys
+
+Use CUID or UUID for user-facing entities:
+
+```prisma
+model User {
+  id String @id @default(cuid())
+  // or: id String @id @default(uuid())
+}
+```
+
+### Timestamps
+
+Always include created/updated timestamps:
+
+```prisma
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+```
+
+### Relations
+
+One-to-many:
+
+```prisma
+model User {
+  id    String @id @default(cuid())
+  posts Post[]
+}
+
+model Post {
+  id       String @id @default(cuid())
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+```
+
+Many-to-many (explicit junction table):
+
+```prisma
+model Post {
+  id   String     @id @default(cuid())
+  tags PostTag[]
+}
+
+model Tag {
+  id    String    @id @default(cuid())
+  name  String    @unique
+  posts PostTag[]
+}
+
+model PostTag {
+  postId String
+  tagId  String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+}
+```
+
+### Enums
+
+```prisma
+enum Role {
+  ADMIN
+  USER
+  GUEST
+}
+
+model User {
+  id   String @id @default(cuid())
+  role Role   @default(USER)
+}
+```
+
+### Indexes
+
+```prisma
+model Post {
+  id        String   @id @default(cuid())
+  authorId  String
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([authorId])
+  @@index([published, createdAt])
+}
+```
+
+### Unique Constraints
+
+```prisma
+model BookCollaborator {
+  id     String @id @default(cuid())
+  bookId String
+  userId String
+
+  @@unique([bookId, userId])
+}
+```
+
+## Migration Workflow
+
+### Development
+
+```bash
+# Make schema changes in prisma/schema.prisma
+
+# Create and apply migration
+npm run db:migrate
+# Prompts for migration name, e.g., "add_posts_table"
+
+# Quick iteration (no migration file, just sync)
+npm run db:push
+```
+
+### Production
+
+```bash
+# Apply pending migrations (run in CI/CD or startup)
+npm run db:migrate:prod
+```
+
+### Migration Best Practices
+
+1. **Never edit applied migrations** - They may have run in production
+2. **Name migrations descriptively** - `add_user_avatar`, `create_posts_table`
+3. **Review generated SQL** - Check `prisma/migrations/` before deploying
+4. **Use db:push for prototyping** - Switch to migrations when schema stabilizes
+5. **Commit migrations** - They're part of your codebase
+
+## Query Patterns
+
+### Basic CRUD
+
+```typescript
+import { prisma } from '@/lib/db'
+
+// Create
+const user = await prisma.user.create({
+  data: {
+    email: 'user@example.com',
+    name: 'John Doe',
+  },
+})
+
+// Read one
+const user = await prisma.user.findUnique({
+  where: { email: 'user@example.com' },
+})
+
+// Read many with filters
+const users = await prisma.user.findMany({
+  where: {
+    role: 'ADMIN',
+    createdAt: { gte: new Date('2024-01-01') },
+  },
+  orderBy: { createdAt: 'desc' },
+  take: 10,
+})
+
+// Update
+const updated = await prisma.user.update({
+  where: { id: userId },
+  data: { name: 'Jane Doe' },
+})
+
+// Delete
+await prisma.user.delete({
+  where: { id: userId },
+})
+```
+
+### With Relations
+
+```typescript
+// Include related data
+const userWithPosts = await prisma.user.findUnique({
+  where: { id: userId },
+  include: {
+    posts: {
+      where: { published: true },
+      orderBy: { createdAt: 'desc' },
+    },
+  },
+})
+
+// Select specific fields
+const userEmail = await prisma.user.findUnique({
+  where: { id: userId },
+  select: {
+    email: true,
+    posts: {
+      select: { title: true },
+    },
+  },
+})
+
+// Nested create
+const userWithPost = await prisma.user.create({
+  data: {
+    email: 'author@example.com',
+    posts: {
+      create: {
+        title: 'My First Post',
+      },
+    },
+  },
+  include: { posts: true },
+})
+```
+
+### Transactions
+
+```typescript
+// Sequential operations
+const [user, post] = await prisma.$transaction([
+  prisma.user.create({ data: { email: 'user@example.com' } }),
+  prisma.post.create({ data: { title: 'Hello', authorId: 'temp' } }),
+])
+
+// Interactive transaction
+await prisma.$transaction(async (tx) => {
+  const user = await tx.user.create({
+    data: { email: 'user@example.com' },
+  })
+  
+  await tx.post.create({
+    data: {
+      title: 'My Post',
+      authorId: user.id,
+    },
+  })
+})
+```
+
+### Upsert
+
+```typescript
+const user = await prisma.user.upsert({
+  where: { email: 'user@example.com' },
+  update: { name: 'Updated Name' },
+  create: { email: 'user@example.com', name: 'New User' },
+})
+```
 
 ## Railway Operations
 
 ### Environment Variables
 
 Required Railway configuration:
+
 ```
-DB_PATH=/data
-RAILWAY_VOLUME_MOUNT_PATH=/data
+DATABASE_URL=file:/data/app.db
 ```
+
+Ensure volume is mounted at `/data`.
 
 ### Shell Access
 
 ```bash
 # Open interactive shell in Railway container
-cd /path/to/project/web
 railway shell
 
-# Inside container:
-sqlite3 /data/study-bible.db
+# Inside container - use Prisma Studio (opens web UI)
+npx prisma studio
+
+# Or use sqlite3 directly
+sqlite3 /data/app.db
 .tables
-.schema users
-SELECT * FROM users LIMIT 5;
+.schema User
+SELECT * FROM User LIMIT 5;
 .quit
-```
-
-### Download Production Database
-
-**⚠️ `railway run cp` does NOT work** — one-off commands don't have volume access.
-
-Use Litestream to restore from the backup bucket:
-
-```bash
-# 1. Install Litestream locally (macOS)
-curl -sLO https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-darwin-amd64.zip
-unzip litestream-v0.3.13-darwin-amd64.zip
-mkdir -p ~/bin && mv litestream ~/bin/
-export PATH="$HOME/bin:$PATH"
-
-# 2. Create restore config with Railway Bucket credentials
-cat > /tmp/litestream-restore.yml << 'EOF'
-dbs:
-  - path: ./study-bible-prod.db
-    replicas:
-      - type: s3
-        bucket: YOUR_BUCKET_NAME
-        path: replica
-        endpoint: https://storage.railway.app
-        access-key-id: YOUR_ACCESS_KEY_ID
-        secret-access-key: YOUR_SECRET_ACCESS_KEY
-        region: iad
-        force-path-style: true
-EOF
-
-# 3. Restore from backup
-cd /path/to/project/web
-litestream restore -config /tmp/litestream-restore.yml -o ./study-bible-prod.db ./study-bible-prod.db
-
-# 4. Verify and use
-sqlite3 ./study-bible-prod.db ".tables"
-```
-
-**Get bucket credentials from Railway:**
-```bash
-railway variables | grep AWS
-# AWS_S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL
-```
-
-### Restore Database (DANGEROUS)
-
-```bash
-# Upload local database to production
-# ⚠️ This overwrites all production data
-railway run cp ./local-database.db /data/study-bible.db
 ```
 
 ### Check Migration Status
 
 ```bash
 railway shell
-sqlite3 /data/study-bible.db "SELECT * FROM _migrations ORDER BY version;"
-```
-
-## Schema Conventions
-
-### Primary Keys
-
-Use TEXT UUIDs for user-facing entities, INTEGER for internal-only:
-
-```sql
--- User-facing: TEXT PRIMARY KEY
-CREATE TABLE users (
-  id TEXT PRIMARY KEY,  -- nanoid or UUID
-  ...
-);
-
--- Internal singleton: INTEGER with CHECK
-CREATE TABLE reading_progress (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  ...
-);
-```
-
-### Timestamps
-
-Always use ISO 8601 TEXT format:
-
-```sql
-created_at TEXT NOT NULL DEFAULT (datetime('now')),
-updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-```
-
-### Foreign Keys
-
-Enable cascading deletes for dependent data:
-
-```sql
-user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE
-```
-
-### Indexes
-
-Create indexes for:
-- Foreign keys used in JOINs
-- Columns used in WHERE clauses
-- Columns used in ORDER BY
-
-```sql
-CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(session_id);
-CREATE INDEX IF NOT EXISTS idx_notes_passage ON notes(book, chapter);
-```
-
-### CHECK Constraints
-
-Use for enums and validation:
-
-```sql
-plan TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro')),
-role TEXT NOT NULL CHECK (role IN ('user', 'assistant'))
-```
-
-## Common PRAGMA Commands
-
-```sql
--- Check current journal mode
-PRAGMA journal_mode;
-
--- Get table info
-PRAGMA table_info(users);
-
--- List all tables
-SELECT name FROM sqlite_master WHERE type='table';
-
--- Check foreign keys are enabled
-PRAGMA foreign_keys;
-
--- Analyze query performance
-EXPLAIN QUERY PLAN SELECT * FROM users WHERE email = 'test@example.com';
+npx prisma migrate status
 ```
 
 ## Continuous Backup with Litestream
@@ -357,54 +464,48 @@ railway add --service bucket
 # 5. Add restore script for empty volumes
 ```
 
-### Cost
-
-Railway Buckets: $0.015/GB/month with free egress.
-
-| DB Size | Monthly Cost |
-|---------|--------------|
-| 100 MB | ~$0.002 |
-| 1 GB | ~$0.02 |
-| 10 GB | ~$0.15 |
-
 ## Troubleshooting
 
-### "database is locked"
+### "Cannot find module '@prisma/client'"
 
-SQLite allows only one writer at a time. Solutions:
-1. Ensure WAL mode is enabled: `db.pragma('journal_mode = WAL')`
-2. Keep transactions short
-3. Use connection pooling sparingly (usually singleton is fine)
-
-### Migration Failed Mid-Way
-
-Migrations run in transactions, so partial failures rollback. To fix:
-1. Check `_migrations` table for applied versions
-2. Fix the failing migration code
-3. Redeploy
-
-### Column Already Exists
-
-Always check before adding columns:
-
-```typescript
-const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[]
-if (!cols.some(c => c.name === 'new_column')) {
-  db.exec('ALTER TABLE users ADD COLUMN new_column TEXT')
-}
+Generate the client after schema changes:
+```bash
+npm run db:generate
 ```
 
-### Production Database Corrupted
+### "Migration failed"
 
-1. Stop the Railway service
-2. Download the corrupted database for analysis
-3. Restore from backup
-4. Investigate what caused corruption
+Check migration status and pending migrations:
+```bash
+npx prisma migrate status
+```
+
+For stuck migrations, you may need to mark as applied or reset:
+```bash
+# Mark a migration as applied (use with caution)
+npx prisma migrate resolve --applied <migration_name>
+
+# Reset database (development only)
+npx prisma migrate reset
+```
+
+### "Database is locked"
+
+SQLite allows only one writer at a time. Solutions:
+1. Keep transactions short
+2. Avoid long-running queries during writes
+3. Use connection pooling sparingly (usually singleton is fine)
+
+### Production Database Issues
+
+1. Check Litestream backup status
+2. Restore from backup if needed
+3. Review `references/litestream.md` for restore procedures
 
 ## References
 
-- `references/boilerplate.md` - Complete database setup code
+- `references/boilerplate.md` - Complete Prisma setup code
 - `references/migrations.md` - Migration patterns and examples
 - `references/litestream.md` - Continuous backup setup with Railway Buckets
-- [Railway Storage Buckets](https://docs.railway.com/guides/storage-buckets) - S3-compatible buckets on Railway
-- [Litestream Docs](https://litestream.io/) - SQLite replication tool
+- [Prisma Docs](https://www.prisma.io/docs) - Official documentation
+- [Railway SQLite Guide](https://docs.railway.com/guides/sqlite) - Railway-specific patterns

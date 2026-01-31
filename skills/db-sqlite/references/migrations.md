@@ -1,305 +1,427 @@
-# SQLite Migration Patterns
+# Prisma Migration Patterns for SQLite
 
-Common migration patterns for SQLite with better-sqlite3.
+Common migration patterns using Prisma with SQLite.
 
-## Basic Patterns
+## Migration Workflow
+
+### Development
+
+```bash
+# 1. Edit prisma/schema.prisma
+
+# 2. Create migration (interactive)
+npx prisma migrate dev --name add_posts_table
+
+# 3. Migration is applied automatically
+# Prisma client is regenerated
+```
+
+### Quick Iteration (No Migration)
+
+For rapid prototyping, skip migrations and sync directly:
+
+```bash
+# Sync schema without creating migration file
+npx prisma db push
+```
+
+**Warning**: `db push` can cause data loss. Use only in development.
+
+### Production
+
+```bash
+# Apply pending migrations (non-interactive)
+npx prisma migrate deploy
+```
+
+## Common Migration Patterns
+
+### Add a New Model
+
+```prisma
+// Before: no Post model
+
+// After: add Post model
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @default("")
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+```
+
+```bash
+npx prisma migrate dev --name create_posts_table
+```
 
 ### Add a Column
 
-```typescript
-{
-  version: 1,
-  name: 'add_phone_to_users',
-  up: (db) => {
-    // Simple add (will fail if column exists)
-    db.exec('ALTER TABLE users ADD COLUMN phone TEXT')
-  }
+```prisma
+// Before
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+}
+
+// After: add name column
+model User {
+  id    String  @id @default(cuid())
+  email String  @unique
+  name  String? // Optional to avoid breaking existing rows
 }
 ```
-
-### Add a Column Safely (Idempotent)
-
-```typescript
-{
-  version: 2,
-  name: 'add_verified_at_to_users',
-  up: (db) => {
-    const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[]
-    if (!cols.some(c => c.name === 'verified_at')) {
-      db.exec('ALTER TABLE users ADD COLUMN verified_at TEXT')
-    }
-  }
-}
-```
-
-### Add Column with Default Value
-
-```typescript
-{
-  version: 3,
-  name: 'add_role_to_users',
-  up: (db) => {
-    const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[]
-    if (!cols.some(c => c.name === 'role')) {
-      db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'member'")
-      // Optionally set default for existing rows
-      db.exec("UPDATE users SET role = 'member' WHERE role IS NULL")
-    }
-  }
-}
-```
-
-### Create a New Table
-
-```typescript
-{
-  version: 4,
-  name: 'create_posts_table',
-  up: (db) => {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS posts (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        published_at TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      
-      CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id);
-      CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(published_at);
-    `)
-  }
-}
-```
-
-### Add an Index
-
-```typescript
-{
-  version: 5,
-  name: 'add_email_index',
-  up: (db) => {
-    db.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
-  }
-}
-```
-
-### Add Multiple Columns
-
-```typescript
-{
-  version: 6,
-  name: 'add_session_tracking_columns',
-  up: (db) => {
-    const cols = db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]
-    const colNames = cols.map(c => c.name)
-    
-    if (!colNames.includes('expires_at')) {
-      db.exec("ALTER TABLE sessions ADD COLUMN expires_at TEXT DEFAULT (datetime('now', '+30 days'))")
-      db.exec("UPDATE sessions SET expires_at = datetime('now', '+30 days') WHERE expires_at IS NULL")
-    }
-    if (!colNames.includes('last_seen_at')) {
-      db.exec("ALTER TABLE sessions ADD COLUMN last_seen_at TEXT DEFAULT (datetime('now'))")
-    }
-    if (!colNames.includes('request_count')) {
-      db.exec('ALTER TABLE sessions ADD COLUMN request_count INTEGER DEFAULT 0')
-    }
-  }
-}
-```
-
-## Advanced Patterns
-
-### Create Table with Constraints
-
-```typescript
-{
-  version: 7,
-  name: 'create_audit_log',
-  up: (db) => {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS audit_log (
-        id TEXT PRIMARY KEY,
-        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-        action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        old_value TEXT, -- JSON
-        new_value TEXT, -- JSON
-        ip_address TEXT,
-        user_agent TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      
-      CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
-      CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);
-      CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
-    `)
-  }
-}
-```
-
-### Rename Column (SQLite Workaround)
-
-SQLite doesn't support `ALTER TABLE RENAME COLUMN` before version 3.25. Use table recreation:
-
-```typescript
-{
-  version: 8,
-  name: 'rename_display_name_to_name',
-  up: (db) => {
-    // Check if old column exists
-    const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[]
-    if (!cols.some(c => c.name === 'display_name')) return
-    if (cols.some(c => c.name === 'name')) return
-    
-    // SQLite 3.25+ supports direct rename
-    db.exec('ALTER TABLE users RENAME COLUMN display_name TO name')
-  }
-}
-```
-
-### Add Foreign Key to Existing Table
-
-SQLite doesn't support `ALTER TABLE ADD CONSTRAINT`. Create a new table:
-
-```typescript
-{
-  version: 9,
-  name: 'add_category_fk_to_posts',
-  up: (db) => {
-    // Create categories table first
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS categories (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `)
-    
-    // Add column (FK constraints only enforced if PRAGMA foreign_keys = ON)
-    const cols = db.prepare("PRAGMA table_info(posts)").all() as { name: string }[]
-    if (!cols.some(c => c.name === 'category_id')) {
-      db.exec('ALTER TABLE posts ADD COLUMN category_id TEXT REFERENCES categories(id) ON DELETE SET NULL')
-      db.exec('CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category_id)')
-    }
-  }
-}
-```
-
-### Data Migration
-
-```typescript
-{
-  version: 10,
-  name: 'split_name_into_first_last',
-  up: (db) => {
-    const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[]
-    const colNames = cols.map(c => c.name)
-    
-    // Add new columns
-    if (!colNames.includes('first_name')) {
-      db.exec('ALTER TABLE users ADD COLUMN first_name TEXT')
-    }
-    if (!colNames.includes('last_name')) {
-      db.exec('ALTER TABLE users ADD COLUMN last_name TEXT')
-    }
-    
-    // Migrate data (split on first space)
-    const users = db.prepare('SELECT id, display_name FROM users WHERE display_name IS NOT NULL').all() as { id: string, display_name: string }[]
-    
-    const update = db.prepare('UPDATE users SET first_name = ?, last_name = ? WHERE id = ?')
-    
-    for (const user of users) {
-      const parts = user.display_name.split(' ')
-      const firstName = parts[0] || null
-      const lastName = parts.slice(1).join(' ') || null
-      update.run(firstName, lastName, user.id)
-    }
-  }
-}
-```
-
-### Conditional Migration Based on Data
-
-```typescript
-{
-  version: 11,
-  name: 'migrate_legacy_plan_values',
-  up: (db) => {
-    // Convert old plan values to new format
-    db.exec(`
-      UPDATE users SET plan = 'free' WHERE plan = 'basic';
-      UPDATE users SET plan = 'pro' WHERE plan IN ('premium', 'enterprise');
-    `)
-  }
-}
-```
-
-## Testing Migrations
-
-### Check Current Schema
-
-```sql
--- List all tables
-SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;
-
--- Show table schema
-PRAGMA table_info(users);
-
--- Show indexes
-PRAGMA index_list(users);
-
--- Show migration history
-SELECT * FROM _migrations ORDER BY version;
-```
-
-### Reset Local Database
 
 ```bash
-# Delete local database to test fresh install
-rm -rf data/*.db data/*.db-shm data/*.db-wal
-
-# Restart app - schema + all migrations run fresh
-npm run dev
+npx prisma migrate dev --name add_user_name
 ```
 
-## Common Gotchas
+### Add Required Column with Default
 
-### 1. SQLite Column Constraints
+```prisma
+// Before
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+}
 
-SQLite ignores most column constraints in `ALTER TABLE ADD COLUMN`:
-- `NOT NULL` only works with a default value
-- `CHECK` constraints are ignored
-- `UNIQUE` constraints require an index
+// After: add required role with default
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+  role  Role   @default(USER)
+}
 
-### 2. Datetime Defaults
+enum Role {
+  ADMIN
+  USER
+}
+```
 
-Use SQLite's datetime function:
+```bash
+npx prisma migrate dev --name add_user_role
+```
+
+### Add Relation (One-to-Many)
+
+```prisma
+// Before: standalone models
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+}
+
+model Post {
+  id    String @id @default(cuid())
+  title String
+}
+
+// After: add relation
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+  posts Post[]
+}
+
+model Post {
+  id       String @id @default(cuid())
+  title    String
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+```
+
+```bash
+npx prisma migrate dev --name add_post_author_relation
+```
+
+### Add Index
+
+```prisma
+// Before
+model Post {
+  id        String   @id @default(cuid())
+  authorId  String
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// After: add indexes
+model Post {
+  id        String   @id @default(cuid())
+  authorId  String
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([authorId])
+  @@index([published, createdAt])
+}
+```
+
+```bash
+npx prisma migrate dev --name add_post_indexes
+```
+
+### Add Unique Constraint
+
+```prisma
+// Before
+model BookCollaborator {
+  id     String @id @default(cuid())
+  bookId String
+  userId String
+}
+
+// After: add unique constraint
+model BookCollaborator {
+  id     String @id @default(cuid())
+  bookId String
+  userId String
+
+  @@unique([bookId, userId])
+}
+```
+
+```bash
+npx prisma migrate dev --name add_collaborator_unique_constraint
+```
+
+### Rename Column
+
+Prisma detects renames if you use `@map`:
+
+```prisma
+// Before
+model User {
+  id          String @id @default(cuid())
+  displayName String
+}
+
+// After: rename to 'name' but keep old column name in DB
+model User {
+  id   String @id @default(cuid())
+  name String @map("displayName")
+}
+```
+
+For true rename without `@map`, Prisma treats it as drop + create. Use a multi-step migration:
+
+```bash
+# Step 1: Add new column
+npx prisma migrate dev --name add_name_column
+
+# Step 2: Migrate data manually in SQL
+# Edit the migration file to add: UPDATE User SET name = displayName;
+
+# Step 3: Drop old column
+npx prisma migrate dev --name drop_display_name
+```
+
+### Delete Column
+
+```prisma
+// Before
+model User {
+  id       String  @id @default(cuid())
+  email    String  @unique
+  oldField String?
+}
+
+// After: remove oldField
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+}
+```
+
+```bash
+npx prisma migrate dev --name remove_old_field
+```
+
+**Warning**: This permanently deletes data in that column.
+
+### Add Enum
+
+```prisma
+// Add enum and use it
+enum Status {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Post {
+  id     String @id @default(cuid())
+  title  String
+  status Status @default(DRAFT)
+}
+```
+
+```bash
+npx prisma migrate dev --name add_post_status_enum
+```
+
+### Modify Enum
+
+SQLite doesn't support ALTER TYPE, so Prisma recreates the column:
+
+```prisma
+// Before
+enum Status {
+  DRAFT
+  PUBLISHED
+}
+
+// After: add ARCHIVED
+enum Status {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+```
+
+```bash
+npx prisma migrate dev --name add_archived_status
+```
+
+## Data Migrations
+
+For complex data transformations, edit the generated SQL migration:
+
+```bash
+# 1. Generate migration
+npx prisma migrate dev --name split_name_field --create-only
+
+# 2. Edit the migration file in prisma/migrations/
+# Add custom SQL for data transformation
+
+# 3. Apply the migration
+npx prisma migrate dev
+```
+
+Example migration with data transformation:
+
 ```sql
-created_at TEXT NOT NULL DEFAULT (datetime('now'))
--- NOT: created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP (different format)
+-- prisma/migrations/20240101000000_split_name_field/migration.sql
+
+-- Add new columns
+ALTER TABLE "User" ADD COLUMN "firstName" TEXT;
+ALTER TABLE "User" ADD COLUMN "lastName" TEXT;
+
+-- Migrate data
+UPDATE "User" SET 
+  "firstName" = substr("name", 1, instr("name" || ' ', ' ') - 1),
+  "lastName" = substr("name", instr("name" || ' ', ' ') + 1)
+WHERE "name" IS NOT NULL;
+
+-- Drop old column (optional, do in separate migration for safety)
+-- ALTER TABLE "User" DROP COLUMN "name";
 ```
 
-### 3. Boolean Values
+## SQLite-Specific Considerations
 
-SQLite uses INTEGER for booleans:
+### No ALTER COLUMN Support
+
+SQLite doesn't support modifying column types. Prisma works around this by:
+1. Creating a new table with the correct schema
+2. Copying data
+3. Dropping the old table
+4. Renaming the new table
+
+This is automatic but can be slow for large tables.
+
+### Foreign Key Constraints
+
+Enable foreign key enforcement in your Prisma schema:
+
+```prisma
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+```
+
+Prisma enables foreign keys automatically.
+
+### Boolean Storage
+
+SQLite stores booleans as integers (0/1). Prisma handles this transparently.
+
+### DateTime Storage
+
+SQLite stores datetimes as TEXT in ISO 8601 format. Prisma handles conversion.
+
+## Migration Commands Reference
+
+```bash
+# Create and apply migration
+npx prisma migrate dev --name <name>
+
+# Create migration without applying
+npx prisma migrate dev --name <name> --create-only
+
+# Apply pending migrations (production)
+npx prisma migrate deploy
+
+# Check migration status
+npx prisma migrate status
+
+# Reset database (drops all data!)
+npx prisma migrate reset
+
+# Mark migration as applied (dangerous)
+npx prisma migrate resolve --applied <migration_name>
+
+# Mark migration as rolled back
+npx prisma migrate resolve --rolled-back <migration_name>
+
+# Generate Prisma Client without migrating
+npx prisma generate
+
+# Sync schema without migration (dev only)
+npx prisma db push
+```
+
+## Troubleshooting
+
+### "Migration failed to apply cleanly"
+
+The migration SQL has an error. Check:
+1. View the SQL in `prisma/migrations/<name>/migration.sql`
+2. Look for SQLite-incompatible syntax
+3. Fix and re-run
+
+### "Drift detected"
+
+The database schema doesn't match migration history:
+
+```bash
+# See what's different
+npx prisma migrate diff --from-schema-datamodel prisma/schema.prisma --to-schema-datasource prisma/schema.prisma
+
+# Reset to clean state (dev only)
+npx prisma migrate reset
+```
+
+### "Migration already applied"
+
+The migration was partially applied. Either:
+
+```bash
+# Mark as applied and continue
+npx prisma migrate resolve --applied <migration_name>
+
+# Or reset (dev only)
+npx prisma migrate reset
+```
+
+### "Cannot drop table"
+
+SQLite requires foreign key checks to be disabled. Prisma handles this, but if you're editing SQL manually:
+
 ```sql
-is_active INTEGER NOT NULL DEFAULT 1  -- 1 = true, 0 = false
+PRAGMA foreign_keys=OFF;
+-- your DROP TABLE
+PRAGMA foreign_keys=ON;
 ```
-
-### 4. JSON Storage
-
-Store as TEXT, parse in application:
-```sql
-metadata TEXT  -- Store JSON.stringify() result
-```
-
-### 5. Array Storage
-
-Options:
-1. Separate junction table (normalized)
-2. JSON array in TEXT column
-3. Comma-separated values (simple but limited)

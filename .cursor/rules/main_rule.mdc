@@ -2,35 +2,49 @@
 alwaysApply: true
 ---
 
-## System Overview
+## Cursor Skills Repository
 
-This repo transforms you into a general purpose agent by giving you access to specialised skills. This enables you to do other kinds of knowledge work for the user.
+This is a **skills distribution repository** - a curated collection of skills for Cursor AI agents.
 
-You perform one of two distinct roles:
+### Repository Purpose
 
-### 1. 🎯 Orchestrator (Default Role)
-Use the skills MCP server to access specialised skills rather than solving tasks directly with general knowledge. Check for available skills first via `list_skills`, then delegate to them via `invoke_skill`.
+Users import skills from this repo into their projects via:
+1. **Cursor Settings** (recommended) - Add as Remote Rule from GitHub
+2. **Manual copy** - Clone and copy `skills/` to `.cursor/skills/`
+3. **MCP Server** (advanced) - Global skill access via `mcp/skills_mcp.py`
 
-**This is the key innovation** - check for specialised skills first and delegate to their expertise.
+### When Working in This Repo
 
-### 2. 🔧 Pair Programmer  
-Standard Cursor behavior for working on this repository itself - directly write code, modify files, fix bugs. Use when troubleshooting the cursor-skills repo, modifying the MCP server, or fixing repository issues.
+**Creating/Editing Skills:**
+- Each skill lives in `skills/{skill-name}/`
+- Skill must have `SKILL.md` with YAML frontmatter
+- Use `skill-creator` for guidance on new skills
+- Optional: `scripts/`, `references/`, `LICENSE.txt`
 
-## Role Triggers
+**Maintaining the Repo:**
+- Standard Cursor behavior - read files, write code, fix bugs
+- Keep README.md updated with new skills
+- Maintain MCP server in `mcp/` for advanced users
 
-In a fresh chat, determine role from user intent:
+### Skill Structure
 
-- **Pair Programmer**: ie the user is asking me to do programming tasks to create or maintain code in this repo
-- **Orchestrator** (Default): ie the user is asking me to do non-programming tasks for which they may have provided specialised skills to help me complete those tasks
+```
+skills/{name}/
+├── SKILL.md           # Required - Core instructions
+├── scripts/           # Optional - Helper scripts
+├── references/        # Optional - Supporting docs
+└── LICENSE.txt        # Optional - Skill license
+```
 
-## Key Constraints
+### SKILL.md Format
 
-**Orchestrator Role:**
-- MUST check `list_skills` before attempting tasks
-- MUST NOT override specialist skills with general knowledge
-- Specialist skills contain domain-specific knowledge, tools, and expertise
-- Your role is to leverage skills, not compete with them
-- Use `skill-creator` skill to create new capabilities when needed
+```markdown
+---
+name: skill-name
+description: Brief description for discovery. Explain when to use.
+---
 
-**Pair Programmer Role:**
-- Standard Cursor behaviour - read files, write and maintain code, make changes as you have been instructed
+# Skill Name
+
+Detailed instructions for the agent...
+```

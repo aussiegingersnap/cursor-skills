@@ -123,6 +123,22 @@ restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 ```
 
+### NestJS + Prisma
+
+**railway.toml:**
+```toml
+[build]
+builder = "nixpacks"
+buildCommand = "npx prisma generate && npx prisma migrate deploy && npm run build"
+
+[deploy]
+startCommand = "node dist/main.js"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+```
+
 ### Node.js/Express
 
 **railway.toml:**
@@ -235,6 +251,41 @@ For subdomains on any provider:
 2. Copy the CNAME target (e.g., `abc123.up.railway.app`)
 3. In DNS: Add CNAME record pointing subdomain to Railway target
 4. Wait for verification in Railway Dashboard
+
+## Multi-Service Projects (Full Stack)
+
+For projects with frontend + backend + database:
+
+### Architecture
+
+```
+Railway Project
+├── Frontend Service (Next.js) → goteammate/nextjs-template
+├── Backend Service (NestJS) → goteammate/nestjs-template
+└── PostgreSQL Database → Railway Postgres template
+```
+
+### Setup via MCP Tools
+
+1. `create-project-and-link` — Create the Railway project
+2. `deploy-template` with "PostgreSQL" — Add database
+3. Connect GitHub repos for frontend and backend services
+4. `set-variables` — Wire `DATABASE_URL`, `NEXT_PUBLIC_API_URL`, `FRONTEND_URL`
+5. `generate-domain` — Create domains for each service
+
+### Auto-Wired Variables
+
+| Variable | Service | Source |
+|----------|---------|--------|
+| `DATABASE_URL` | Backend | Railway Postgres reference |
+| `PORT` | Both | Railway auto-provides |
+| `FRONTEND_URL` | Backend | Frontend Railway domain |
+| `NEXT_PUBLIC_API_URL` | Frontend | Backend Railway domain |
+| `NEXT_PUBLIC_APP_URL` | Frontend | Frontend Railway domain |
+
+### Bootstrap Shortcut
+
+Use the `new-project` skill in `teammate-ops` to automate the entire multi-service setup from a single conversation.
 
 ## Project Configuration Template
 

@@ -99,6 +99,12 @@ See [MCP Setup](#mcp-server-setup) below for details.
 | `infra-env` | Environment configuration patterns |
 | `secrets-1password` | 1Password CLI for secrets management |
 
+### Dev Environment
+
+| Skill | Description |
+|-------|-------------|
+| `tools-mise` | Mise dev tool manager - tasks, tools, environments, hooks |
+
 ### Tools & Integrations (`tools-`)
 
 | Skill | Description |
